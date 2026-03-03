@@ -1880,8 +1880,214 @@
     }
   });
 </script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const SUPABASE_URL = 'https://giptmwhetvjpzxuvynwp.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdpcHRtd2hldHZqcHp4dXZ5bndwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1MDM5NDUsImV4cCI6MjA4ODA3OTk0NX0.hBPg1snZnPbw7uO1hWoE0f0I5zinc834krg7GGpi99c';
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // ---- Supabase CRUD helpers ----
+  async function dbUpdateLead(id, fields) {
+    const { error } = await supabase.from('leads').update(fields).eq('id', String(id));
+    if (error) console.error('Lead update error:', error);
+  }
+  async function dbInsertLead(lead) {
+    const { error } = await supabase.from('leads').insert(lead);
+    if (error) console.error('Lead insert error:', error);
+  }
+  async function dbUpdateSwimlane(id, fields) {
+    const { error } = await supabase.from('swimlanes').update(fields).eq('id', id);
+    if (error) console.error('Swimlane update error:', error);
+  }
+  async function dbUpdateContact(id, fields) {
+    const { error } = await supabase.from('contacts').update(fields).eq('id', id);
+    if (error) console.error('Contact update error:', error);
+  }
+  async function dbInsertContact(contact) {
+    const { data, error } = await supabase.from('contacts').insert(contact).select();
+    if (error) console.error('Contact insert error:', error);
+    return data ? data[0] : null;
+  }
+  async function dbInsertLeadContact(lc) {
+    const { data, error } = await supabase.from('lead_contacts').insert(lc).select();
+    if (error) console.error('Lead contact insert error:', error);
+    return data ? data[0] : null;
+  }
+  async function dbDeleteLeadContact(id) {
+    const { error } = await supabase.from('lead_contacts').delete().eq('id', id);
+    if (error) console.error('Lead contact delete error:', error);
+  }
+  async function dbUpdateLeadContact(id, fields) {
+    const { error } = await supabase.from('lead_contacts').update(fields).eq('id', id);
+    if (error) console.error('Lead contact update error:', error);
+  }
+  async function dbUpdatePartner(id, fields) {
+    const { error } = await supabase.from('partners').update(fields).eq('id', id);
+    if (error) console.error('Partner update error:', error);
+  }
+  async function dbInsertPartner(partner) {
+    const { data, error } = await supabase.from('partners').insert(partner).select();
+    if (error) console.error('Partner insert error:', error);
+    return data ? data[0] : null;
+  }
+  async function dbInsertOption(category, value) {
+    const { error } = await supabase.from('app_options').insert({ category, value });
+    if (error && error.code !== '23505') console.error('Option insert error:', error);
+  }
+
+  // ---- Load all data from Supabase ----
+  async function loadAllData() {
+    try {
+      const [leadsRes, swimRes, contactsRes, lcRes, partnersRes, optsRes] = await Promise.all([
+        supabase.from('leads').select('*'),
+        supabase.from('swimlanes').select('*').order('sort_order'),
+        supabase.from('contacts').select('*').order('id'),
+        supabase.from('lead_contacts').select('*').order('sort_order'),
+        supabase.from('partners').select('*').order('id'),
+        supabase.from('app_options').select('*').order('sort_order')
+      ]);
+
+      // Populate leads
+      if (leadsRes.data) {
+        for (const r of leadsRes.data) {
+          allLeads[r.id] = {
+            id: String(r.id),
+            title: r.title || '',
+            company: r.company || '',
+            assignee: r.assignee || 'Unassigned',
+            value: r.value,
+            tags: r.tags || [],
+            comments: r.comments || 0,
+            state: r.state || 'Introduction',
+            status: r.status || 'Active',
+            product: r.product || '',
+            notes: r.notes || ''
+          };
+        }
+      }
+
+      // Populate swimlanes
+      if (swimRes.data) {
+        swimlanes.length = 0;
+        for (const r of swimRes.data) {
+          swimlanes.push({
+            _dbId: r.id,
+            name: r.name,
+            color: r.color,
+            ids: r.lead_ids || []
+          });
+        }
+      }
+
+      // Populate contactsDB from lead_contacts
+      if (lcRes.data) {
+        for (const r of lcRes.data) {
+          if (!contactsDB[r.lead_id]) contactsDB[r.lead_id] = [];
+          contactsDB[r.lead_id].push({
+            _dbId: r.id,
+            name: r.name || '',
+            email: r.email || '',
+            phone: r.phone || '',
+            company: r.company || '',
+            job: r.job || ''
+          });
+        }
+      }
+
+      // Populate allContacts
+      if (contactsRes.data) {
+        allContacts.length = 0;
+        for (const r of contactsRes.data) {
+          allContacts.push({
+            id: r.id,
+            name: r.name || '',
+            first: r.first_name || '',
+            last: r.last_name || '',
+            company: r.company || '',
+            email: r.email || '',
+            phone: r.phone || '',
+            job: r.job || '',
+            location: r.location || '',
+            website: r.website || '',
+            contactType: r.contact_type || 'Prospect',
+            status: r.status || 'Active',
+            team: r.is_team || false
+          });
+        }
+      }
+
+      // Populate partnersData
+      if (partnersRes.data) {
+        partnersData.length = 0;
+        for (const r of partnersRes.data) {
+          partnersData.push({
+            id: r.id,
+            name: r.name || '',
+            product: r.product || '',
+            stage: r.stage || '',
+            contact: r.contact || '',
+            email: r.email || '',
+            notes: r.notes || '',
+            price: r.price || '',
+            type: r.type || '',
+            markets: r.markets || '',
+            date: r.date || ''
+          });
+        }
+      }
+
+      // Populate dynamic options
+      if (optsRes.data) {
+        for (const r of optsRes.data) {
+          if (r.category === 'pipe_stage' && !pipeStageOptions.includes(r.value)) pipeStageOptions.push(r.value);
+          if (r.category === 'pipe_product' && !pipeProductOptions.includes(r.value)) pipeProductOptions.push(r.value);
+          if (r.category === 'contact_type' && !contactTypeOptions.includes(r.value)) contactTypeOptions.push(r.value);
+          if (r.category === 'contact_status' && !contactStatusOptions.includes(r.value)) contactStatusOptions.push(r.value);
+          if (r.category === 'bv_product' && !bvProductOptions.includes(r.value)) bvProductOptions.push(r.value);
+          if (r.category === 'bv_stage' && !bvStageOptions.includes(r.value)) bvStageOptions.push(r.value);
+          if (r.category === 'bv_type' && !bvTypeOptions.includes(r.value)) bvTypeOptions.push(r.value);
+        }
+      }
+
+      // Extract company from title for leads missing company
+      for (const id in allLeads) {
+        if (!allLeads[id].company) {
+          const seg = allLeads[id].title.split(' - ');
+          if (seg.length > 1) allLeads[id].company = seg[0].trim();
+        }
+      }
+
+      // Build leadLaneMap
+      swimlanes.forEach(lane => {
+        lane.ids.forEach(id => {
+          leadLaneMap[id] = { name: lane.name, color: lane.color };
+        });
+      });
+
+      // Populate notesStore from loaded lead notes
+      for (const id in allLeads) {
+        if (allLeads[id].notes) notesStore[id] = allLeads[id].notes;
+      }
+      console.log('✅ Supabase data loaded');
+      renderBoard();
+      document.getElementById('loadingOverlay')?.remove();
+    } catch (err) {
+      console.error('Failed to load data:', err);
+      document.getElementById('loadingOverlay').innerHTML = '<div style="color:red;text-align:center;padding:4rem">Failed to load data. Check console.</div>';
+    }
+  }
+</script>
 </head>
 <body>
+<div id="loadingOverlay" style="position:fixed;inset:0;background:#f0f2f5;z-index:9999;display:flex;align-items:center;justify-content:center;">
+  <div style="text-align:center">
+    <div style="font-family:'Playfair Display',serif;font-size:1.6rem;font-weight:900;margin-bottom:0.5rem">Ruby Sales Pipeline</div>
+    <div style="font-size:0.85rem;color:#6b7280">Loading from database…</div>
+    <div style="margin-top:1rem;width:40px;height:40px;border:3px solid #dfe1e6;border-top-color:#16a34a;border-radius:50%;animation:spin 0.8s linear infinite;margin:1rem auto"></div>
+    <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+  </div>
+</div>
 
 <!-- ═══ Microsoft Graph Toolkit Auth ═══ -->
 <mgt-msal2-provider client-id="92f65c59-4a7c-4b9a-ad9f-664ce24f5517"
@@ -2135,182 +2341,12 @@
 </div>
 
 <script>
-const swimlanes = [
-  {
-    name: "High Likelihood",
-    color: "#16a34a",
-    ids: [409,408,237,373,384,345,331,382,383,401,294,249,233,232,343,398]
-  },
-  {
-    name: "New Prospects — ERP",
-    color: "#ea580c",
-    ids: [298,295,337,335,177,293]
-  },
-  {
-    name: "New Prospects — Price Management",
-    color: "#1e3a5f",
-    ids: [379,381,387,378,386,380,388,338,390,385,389,392,393,395,391,400,399]
-  },
-  {
-    name: "Upgrade Opportunities",
-    color: "#65a30d",
-    ids: [220,339]
-  },
-  {
-    name: "Referral Tracking",
-    color: "#0e7490",
-    ids: [325,328,341,394,179,330,340,327,326,329,324,323]
-  },
-  {
-    name: "Low Likelihood",
-    color: "#ca8a04",
-    ids: [180,221,175,174,344,213,130,136,224,226,125,126,211,346,131,150,121]
-  },
-  {
-    name: "Cave Names",
-    color: "#64748b",
-    ids: [369,362,360,358,370,366,365,363,361,372,371,368,367,364,359,356,357,355,354,353,352]
-  },
-  {
-    name: "Billable",
-    color: "#334155",
-    ids: [351,336,342,334,235,168,178,225,132,176,212,128]
-  }
-];
+const swimlanes = [];
 
-// --- Contacts Database (from RubyProContacts.CSV) ---
-const contactsDB = {
-  "126": [{"name":"Steve Melchiskey","email":"stevemelchiskey@gmail.com","phone":"","company":"Retired","job":""}],
-  "130": [{"name":"Ed Edwards","email":"ebe.meritage@comcast.net","phone":"","company":"Meritage W&S","job":""}],
-  "168": [{"name":"Kirk Parsons","email":"kirk.parsons@parsonsfineimports.com","phone":"","company":"Parson Fine Imports","job":"President"},{"name":"Will Parsons","email":"will.parsons@parsonsfineimports.com","phone":"","company":"Parson Fine Imports","job":"Sales"}],
-  "174": [{"name":"Arjun Dewan","email":"arjundewan1022@gmail.com","phone":"","company":"","job":""}],
-  "175": [{"name":"Arjun Dewan","email":"arjundewan1022@gmail.com","phone":"","company":"","job":""}],
-  "179": [{"name":"Arjun Dewan","email":"arjundewan1022@gmail.com","phone":"","company":"","job":""}],
-  "221": [{"name":"Steve Melchiskey","email":"stevemelchiskey@gmail.com","phone":"","company":"Retired","job":""}],
-  "249": [{"name":"James Stover","email":"Stoverwine@gmail.com","phone":"(630) 373-2675","company":"Wine Sales","job":""}],
-  "324": [{"name":"Sam Anderson","email":"sam@bevassets.com","phone":"","company":"Bev Assets","job":"Partner"}],
-  "326": [{"name":"Kirk Parsons","email":"kirk.parsons@parsonsfineimports.com","phone":"","company":"Parson Fine Imports","job":"President"},{"name":"Will Parsons","email":"will.parsons@parsonsfineimports.com","phone":"","company":"Parson Fine Imports","job":"Sales"}],
-  "340": [{"name":"Michael Hinckley","email":"mhinckley1@gmail.com","phone":"(513) 477-6463","company":"","job":""},{"name":"Michael Klauer","email":"mk@mbevteam.com","phone":"(773) 255-7864","company":"MMK Logistics","job":"President"}],
-  "341": [{"name":"Dave Forman","email":"dee4man@comcast.net","phone":"(404) 314-6399","company":"","job":"VP"}],
-  "344": [{"name":"Daeyna Grant","email":"hello@goldcrushcocktails.com","phone":"","company":"Gold Crush Cocktails","job":"CEO & Founder"}],
-  "346": [{"name":"Alberto Berardi","email":"a.berardi@fraternityspirits.com","phone":"","company":"Fraternity Spirits","job":""},{"name":"Raffaele Berardi","email":"r.berardi@fraternityspirits.com","phone":"","company":"Fraternity Spirits","job":""}],
-  "373": [{"name":"Michael Hinckley","email":"mhinckley1@gmail.com","phone":"(513) 477-6463","company":"","job":""},{"name":"Michael Klauer","email":"mk@mbevteam.com","phone":"(773) 255-7864","company":"MMK Logistics","job":"President"}],
-  "383": [{"name":"Dale LaFlam","email":"dale@530somewhere.com","phone":"(562) 533-5077","company":"5:30 Somewhere","job":"President"}],
-  "408": [{"name":"Kirk Parsons","email":"kirk.parsons@parsonsfineimports.com","phone":"","company":"Parson Fine Imports","job":"President"},{"name":"Will Parsons","email":"will.parsons@parsonsfineimports.com","phone":"","company":"Parson Fine Imports","job":"Sales"}]
-};
+// --- Contacts Database (loaded from Supabase) ---
+const contactsDB = {};
 
-const allLeads = {
-  409:{id:"409",title:"Mason Dixon Distillery - BevAssets - Yianni - $300 - ERP",assignee:"Unassigned",value:300,tags:["BevAssets","ERP"],comments:1},
-  408:{id:"408",title:"Sani Wines - Parsons - Tony and Giorgi - $500 ERP",assignee:"Unassigned",value:500,tags:["ERP"],comments:1},
-  237:{id:"237",title:"BevAssets ERP - Amanda - TBD - Tom",assignee:"Tom Harris",value:null,tags:["BevAssets","ERP"],comments:1},
-  373:{id:"373",title:"Bear Creek Distillery - Evan Bisson - Michael Hinckley - $75",assignee:"Jim Harris",value:75,tags:[],comments:1},
-  384:{id:"384",title:"Barsotti Wines - Jason Sicher - G2G - $900",assignee:"Tom Harris",value:900,tags:[],comments:1},
-  345:{id:"345",title:"Frankies - Ryan Shea - PM - Bev Assets - $225",assignee:"Jim Harris",value:225,tags:["BevAssets"],comments:2},
-  331:{id:"331",title:"Paradise Distributors - $900 - Chris Truppi - BevAssets",assignee:"Tom Harris",value:900,tags:["BevAssets"],comments:1},
-  382:{id:"382",title:"Frontline ERP - Paul - TBD",assignee:"Jim Harris",value:null,tags:["ERP"],comments:1},
-  383:{id:"383",title:"5:30 Somewhere - Dale LaFlam - TBD",assignee:"Tom Harris",value:null,tags:[],comments:2},
-  401:{id:"401",title:"Western Beverage CA - Rod Taylor - Bev Assets - $900",assignee:"Tom Harris",value:900,tags:["BevAssets"],comments:1},
-  294:{id:"294",title:"Cold Cowboy - LauraAnn, Davis - $300",assignee:"Jack Harris",value:300,tags:[],comments:4},
-  249:{id:"249",title:"Ascent Beverage CO - Adrian, James - $300/$500",assignee:"Jack Harris",value:300,tags:[],comments:4},
-  233:{id:"233",title:"88 Spirits - Hari - $500 - Tom",assignee:"Tom Harris",value:500,tags:[],comments:0},
-  232:{id:"232",title:"Texas Spirits - $300 - BevAssets",assignee:"Jack Harris",value:300,tags:["BevAssets"],comments:1},
-  343:{id:"343",title:"Coalition - Regular Follow Up",assignee:"Tom Harris",value:null,tags:[],comments:1},
-  398:{id:"398",title:"Frankies - Ryan Shea - BevAssets - $850 ERP",assignee:"Tom Harris",value:850,tags:["BevAssets","ERP"],comments:1},
-
-  298:{id:"298",title:"Pacific Blue CA - Tom",assignee:"Jack Harris",value:null,tags:[],comments:3},
-  295:{id:"295",title:"Elliott Bay Wine - Susan - TBD",assignee:"Jack Harris",value:null,tags:[],comments:4},
-  337:{id:"337",title:"Upland Cellars AR - ERP - Anne Fletcher",assignee:"Jack Harris",value:null,tags:["ERP"],comments:4},
-  335:{id:"335",title:"Freebrook Imports CA - ERP - Katie, Adam - Bev Assets",assignee:"Jim Harris",value:null,tags:["BevAssets","ERP"],comments:2},
-  177:{id:"177",title:"Bourquet Imports MN - Annette Peters - ERP - Tom",assignee:"Jack Harris",value:null,tags:["ERP"],comments:4},
-  293:{id:"293",title:"Artisan Wines & Spirits AR - Catherine - $300",assignee:"Tom Harris",value:300,tags:[],comments:7},
-
-  379:{id:"379",title:"Brosant Group - Othon Santillan - WSWA",assignee:"Unassigned",value:null,tags:["WSWA"],comments:0},
-  381:{id:"381",title:"Bolle - Stephanie Eads-Paul - WSWA",assignee:"Jack Harris",value:null,tags:["WSWA"],comments:2},
-  387:{id:"387",title:"Pardela USA - Don Morse - WSWA",assignee:"Jack Harris",value:null,tags:["WSWA"],comments:0},
-  378:{id:"378",title:"Victor George Spirits - Staci Town - WSWA",assignee:"Tom Harris",value:null,tags:["WSWA"],comments:0},
-  386:{id:"386",title:"Importers Direct - WSWA",assignee:"Jack Harris",value:null,tags:["WSWA"],comments:1},
-  380:{id:"380",title:"Field of Dreams - Andy Keller - WSWA",assignee:"Jack Harris",value:null,tags:["WSWA"],comments:1},
-  388:{id:"388",title:"Leon Y Sol - Houman Alimirzaei - WSWA",assignee:"Jack Harris",value:null,tags:["WSWA"],comments:1},
-  338:{id:"338",title:"SpikeAid - Gary Harris - $375",assignee:"Jim Harris",value:375,tags:[],comments:0},
-  390:{id:"390",title:"Short Barrell - Manny - WSWA",assignee:"Jack Harris",value:null,tags:["WSWA"],comments:1},
-  385:{id:"385",title:"Alto Canto Tequila - Daday Suárez - WSWA",assignee:"Jack Harris",value:null,tags:["WSWA"],comments:1},
-  389:{id:"389",title:"C Villanueva - Jose Brignoni - WSWA",assignee:"Jack Harris",value:null,tags:["WSWA"],comments:0},
-  392:{id:"392",title:"Tag Reserve Spirits - Matthew Rodwick - WSWA",assignee:"Jack Harris",value:null,tags:["WSWA"],comments:1},
-  393:{id:"393",title:"Tarnished Truth - EPR+PM - Andrew Yancey - WSWA",assignee:"Jack Harris",value:null,tags:["WSWA","ERP"],comments:1},
-  395:{id:"395",title:"Blue Grass - ERP - Ben Franzini - WSWA",assignee:"Jack Harris",value:null,tags:["WSWA","ERP"],comments:1},
-  391:{id:"391",title:"Bardstown - Mark Erwin - WSWA",assignee:"Jack Harris",value:null,tags:["WSWA"],comments:1},
-  400:{id:"400",title:"Five Grapes - Lev - ERP - $900 Obi",assignee:"Tom Harris",value:900,tags:["ERP"],comments:1},
-  399:{id:"399",title:"Black Market Spirits - PM - Dave Moore - $600",assignee:"Jim Harris",value:600,tags:[],comments:0},
-
-  220:{id:"220",title:"Sip Bev Audit - ERP",assignee:"Tom Harris",value:null,tags:["ERP"],comments:1},
-  339:{id:"339",title:"Parson Fine Wine - Price Management - $100",assignee:"Tom Harris",value:100,tags:[],comments:1},
-
-  325:{id:"325",title:"88 Spirits - Hari",assignee:"Tom Harris",value:null,tags:[],comments:0},
-  328:{id:"328",title:"Texas Spirits - Steven",assignee:"Tom Harris",value:null,tags:[],comments:0},
-  341:{id:"341",title:"David Forman - Broker",assignee:"Jim Harris",value:null,tags:["Broker"],comments:0},
-  394:{id:"394",title:"Earl Giles - ERP - WSWA",assignee:"Jack Harris",value:null,tags:["WSWA","ERP"],comments:1},
-  179:{id:"179",title:"Arjun - Sales Commissions",assignee:"Jim Harris",value:null,tags:[],comments:1},
-  330:{id:"330",title:"Coalition - Ed or Eric",assignee:"Tom Harris",value:null,tags:[],comments:0},
-  340:{id:"340",title:"Michael Hinckley - Broker",assignee:"Jim Harris",value:null,tags:["Broker"],comments:2},
-  327:{id:"327",title:"Grapes to Glass - Kevin",assignee:"Tom Harris",value:null,tags:[],comments:0},
-  326:{id:"326",title:"Parsons - Kirk",assignee:"Tom Harris",value:null,tags:[],comments:0},
-  329:{id:"329",title:"Hand Harvest - Daniel",assignee:"Tom Harris",value:null,tags:[],comments:0},
-  324:{id:"324",title:"Sam Anderson",assignee:"Jim Harris",value:null,tags:[],comments:0},
-  323:{id:"323",title:"Dave Moore",assignee:"Jim Harris",value:null,tags:[],comments:0},
-
-  180:{id:"180",title:"Deccan Spirits - Sam - $60 - Tom",assignee:"Unassigned",value:60,tags:[],comments:1},
-  221:{id:"221",title:"Ahold grocery - Jonas De Maere - Ian-Steve",assignee:"Unassigned",value:null,tags:[],comments:0},
-  175:{id:"175",title:"Shannon Ridge - Arjun - $600 - Jim",assignee:"Unassigned",value:600,tags:[],comments:0},
-  174:{id:"174",title:"Hill Rock Whiskey - Arjun - $100 - Jim",assignee:"Unassigned",value:100,tags:[],comments:0},
-  344:{id:"344",title:"Gold CRush Cocktails - Daeyna - Bev Assets - $25",assignee:"Tom Harris",value:25,tags:["BevAssets"],comments:3},
-  213:{id:"213",title:"Manuel Brothers - Luke - BevAssets - $TBD",assignee:"Unassigned",value:null,tags:["BevAssets"],comments:0},
-  130:{id:"130",title:"Meritage W&S Brokers - Ed - Dave/Sam - $TBD",assignee:"Unassigned",value:null,tags:["Broker"],comments:1},
-  136:{id:"136",title:"LO SECCO - Monika - $TBD - Jim",assignee:"Unassigned",value:null,tags:[],comments:0},
-  224:{id:"224",title:"Lasorta Family Wine",assignee:"Unassigned",value:null,tags:[],comments:0},
-  226:{id:"226",title:"Torch - John - BevAssets $TBD",assignee:"Unassigned",value:null,tags:["BevAssets"],comments:0},
-  125:{id:"125",title:"22 Salute - Eric & Maurice - Bev Assets - $120",assignee:"Unassigned",value:120,tags:["BevAssets"],comments:0},
-  126:{id:"126",title:"The Grape Cycle - George - Ian & Steve - $TBD",assignee:"Unassigned",value:null,tags:[],comments:0},
-  211:{id:"211",title:"SHOWME Beverages - John - Bev Assets - $TBD",assignee:"Unassigned",value:null,tags:["BevAssets"],comments:0},
-  346:{id:"346",title:"Fraternity Spirits - Raffaelo, Alberto - BevAssets",assignee:"Unassigned",value:null,tags:["BevAssets"],comments:0},
-  131:{id:"131",title:"Art & Rev - Anne - Bev Assets - $40",assignee:"Unassigned",value:40,tags:["BevAssets"],comments:1},
-  150:{id:"150",title:"Sales & Marketing Collateral",assignee:"Unassigned",value:null,tags:[],comments:0},
-  121:{id:"121",title:"Sucellis - Walter - Dave Moore - $TBD",assignee:"Unassigned",value:null,tags:[],comments:0},
-
-  369:{id:"369",title:"IPO Wines",assignee:"Unassigned",value:null,tags:[],comments:0},
-  362:{id:"362",title:"Selection Pas Mal",assignee:"Unassigned",value:null,tags:[],comments:0},
-  360:{id:"360",title:"Hand Picked Selections",assignee:"Unassigned",value:null,tags:[],comments:0},
-  358:{id:"358",title:"Schatzi Wines",assignee:"Unassigned",value:null,tags:[],comments:0},
-  370:{id:"370",title:"Pace",assignee:"Unassigned",value:null,tags:[],comments:0},
-  366:{id:"366",title:"RWH",assignee:"Unassigned",value:null,tags:[],comments:0},
-  365:{id:"365",title:"FB Selections",assignee:"Unassigned",value:null,tags:[],comments:0},
-  363:{id:"363",title:"Missing Link Wine Co",assignee:"Unassigned",value:null,tags:[],comments:0},
-  361:{id:"361",title:"Natural Wine Company",assignee:"Unassigned",value:null,tags:[],comments:0},
-  372:{id:"372",title:"Voyager Beverage",assignee:"Jim Harris",value:null,tags:[],comments:0},
-  371:{id:"371",title:"Rue 38 MN Wines & Importer & Distributor",assignee:"Jim Harris",value:null,tags:[],comments:0},
-  368:{id:"368",title:"Walden Selections",assignee:"Jim Harris",value:null,tags:[],comments:0},
-  367:{id:"367",title:"Brazos Wine",assignee:"Jim Harris",value:null,tags:[],comments:0},
-  364:{id:"364",title:"Simple Farmer Wines",assignee:"Unassigned",value:null,tags:[],comments:0},
-  359:{id:"359",title:"Plan Wines",assignee:"Unassigned",value:null,tags:[],comments:0},
-  356:{id:"356",title:"Louis / Dressner Selection",assignee:"Jim Harris",value:null,tags:[],comments:0},
-  357:{id:"357",title:"Enotria Wine Imports",assignee:"Jim Harris",value:null,tags:[],comments:0},
-  355:{id:"355",title:"Vos Selections",assignee:"Jim Harris",value:null,tags:[],comments:0},
-  354:{id:"354",title:"Orsini Wines",assignee:"Jim Harris",value:null,tags:[],comments:0},
-  353:{id:"353",title:"Zev Rovine Selections (ZRS)",assignee:"Jim Harris",value:null,tags:[],comments:0},
-  352:{id:"352",title:"David Bowler",assignee:"Jim Harris",value:null,tags:[],comments:1,state:"Doing"},
-
-  351:{id:"351",title:"Falcon Distributing - Ryan Kohl - Bev Assets - $900",assignee:"Tom Harris",value:900,tags:["BevAssets"],comments:0,state:"Done"},
-  336:{id:"336",title:"O'Shaughnessy - Brian, Patrick - BevAssets - $580",assignee:"Tom Harris",value:580,tags:["BevAssets"],comments:0,state:"Done"},
-  342:{id:"342",title:"Thornbush Whiskey - Alex, Amy - BevAssets - $75",assignee:"Tom Harris",value:75,tags:["BevAssets"],comments:0,state:"Done"},
-  334:{id:"334",title:"Montanya Rum - Megan, Renee, Sean - Bev Assets - $50",assignee:"Jim Harris",value:50,tags:["BevAssets"],comments:0,state:"Done"},
-  235:{id:"235",title:"Lloyd Cellars - Geoff - $250 - Dave",assignee:"Unassigned",value:250,tags:[],comments:0,state:"Done"},
-  168:{id:"168",title:"Parsons Fine Imports IN - Kirk Parsons - ERP $900",assignee:"Unassigned",value:900,tags:["ERP"],comments:0,state:"Done"},
-  178:{id:"178",title:"Dave - Commission Agreement",assignee:"Unassigned",value:null,tags:[],comments:0,state:"Done"},
-  225:{id:"225",title:"Grapes To Glass - Kevin - $850",assignee:"Unassigned",value:850,tags:[],comments:0,state:"Done"},
-  132:{id:"132",title:"Webinar - 8.21 - 7pm EST",assignee:"Unassigned",value:null,tags:[],comments:0,state:"Done"},
-  176:{id:"176",title:"Sam - Bev Assets - Sales Commission Agreement - Tom",assignee:"Unassigned",value:null,tags:["BevAssets"],comments:0,state:"Done"},
-  212:{id:"212",title:"Finish Broker Agreement Template",assignee:"Unassigned",value:null,tags:[],comments:0,state:"Done"},
-  128:{id:"128",title:"Pin Drop Rum - Kirk - Dave via Webinar - $200",assignee:"Unassigned",value:200,tags:[],comments:0,state:"Done"},
-};
+const allLeads = {};
 
 // Extract company name from lead title (first segment before " - ")
 for (const id in allLeads) {
@@ -2600,6 +2636,10 @@ function addNewLead() {
 
   // Add to High Likelihood swimlane (first lane)
   swimlanes[0].ids.push(newId);
+  
+  // Save to Supabase
+  dbInsertLead({ id: String(newId), title: 'New Lead', assignee: 'Unassigned', value: null, tags: [], comments: 0, state: 'Introduction', company: '', status: 'Active', product: '' });
+  if (swimlanes[0]._dbId) dbUpdateSwimlane(swimlanes[0]._dbId, { lead_ids: swimlanes[0].ids });
 
   // Update leadLaneMap
   leadLaneMap[newId] = { name: swimlanes[0].name, color: swimlanes[0].color };
@@ -2615,6 +2655,9 @@ function setPipeStatusFilter(val) {
 }
 
 function changeLeadProduct(leadId, selectEl) {
+  // Save product to Supabase after processing
+  setTimeout(() => { const l = allLeads[leadId]; if (l) dbUpdateLead(leadId, { product: l.product || '' }); }, 50);
+
   const v = selectEl.value;
   if (v === '__add__') {
     const val = prompt('Enter new Product:');
@@ -2633,6 +2676,10 @@ function changeLeadProduct(leadId, selectEl) {
 }
 
 function changeLeadField(leadId, field, value) {
+  // Save to Supabase
+  const dbVal = field === 'value' ? (parseInt(String(value).replace(/[^0-9]/g,'')) || null) : value;
+  dbUpdateLead(leadId, { [field]: dbVal });
+
   const l = allLeads[leadId];
   if (!l) return;
   if (field === 'value') {
@@ -2651,11 +2698,15 @@ function changeLeadField(leadId, field, value) {
 }
 
 function changeLeadStage(leadId, selectEl) {
+  // Save stage to Supabase after processing
+  setTimeout(() => { const l = allLeads[leadId]; if (l) dbUpdateLead(leadId, { state: l.state }); }, 50);
+
   const v = selectEl.value;
   if (v === '__add_stage__') {
     const val = prompt('Enter new Stage:');
     if (val && val.trim()) {
       if (!pipeStageOptions.includes(val.trim())) pipeStageOptions.push(val.trim());
+      dbInsertOption('pipe_stage', val.trim());
       allLeads[leadId].state = val.trim();
     }
     renderBoard();
@@ -2666,6 +2717,9 @@ function changeLeadStage(leadId, selectEl) {
 }
 
 function changeLeadLane(leadId, newLaneName) {
+  // Save lane changes to Supabase
+  setTimeout(() => { swimlanes.forEach(lane => { if (lane._dbId) dbUpdateSwimlane(lane._dbId, { lead_ids: lane.ids }); }); }, 100);
+
   // Remove from current lane
   swimlanes.forEach(lane => {
     const idx = lane.ids.indexOf(Number(leadId));
@@ -2681,6 +2735,9 @@ function changeLeadLane(leadId, newLaneName) {
 }
 
 function changeLeadStatus(leadId, selectEl) {
+  // Save status to Supabase
+  setTimeout(() => { const l = allLeads[leadId]; if (l) dbUpdateLead(leadId, { status: l.status || 'Active' }); }, 50);
+
   const l = allLeads[leadId];
   if (l) l.status = selectEl.value;
   renderBoard();
@@ -2920,7 +2977,9 @@ function linkExistingContact(leadId, contactId) {
   const c = allContacts.find(x => x.id === contactId);
   if (!c) return;
   if (!contactsDB[leadId]) contactsDB[leadId] = [];
-  contactsDB[leadId].push({name: c.name, email: c.email || '', phone: c.phone || '', company: c.company || '', job: c.job || ''});
+  const _newLC = {name: c.name, email: c.email || '', phone: c.phone || '', company: c.company || '', job: c.job || ''};
+  contactsDB[leadId].push(_newLC);
+  dbInsertLeadContact({ lead_id: leadId, name: _newLC.name, email: _newLC.email, phone: _newLC.phone, company: _newLC.company, job: _newLC.job, sort_order: contactsDB[leadId].length - 1 }).then(row => { if (row) _newLC._dbId = row.id; });
   const picker = document.getElementById('contactPicker');
   if (picker) picker.remove();
   openPanel(leadId);
@@ -2942,7 +3001,9 @@ function createNewContactForLead(leadId) {
 
   // Link to this lead
   if (!contactsDB[leadId]) contactsDB[leadId] = [];
-  contactsDB[leadId].push({name: trimmed, email:'', phone:'', company:'', job:''});
+  const _newLC2 = {name: trimmed, email:'', phone:'', company:'', job:''};
+  contactsDB[leadId].push(_newLC2);
+  dbInsertLeadContact({ lead_id: leadId, name: trimmed, email: '', phone: '', company: '', job: '', sort_order: contactsDB[leadId].length - 1 }).then(row => { if (row) _newLC2._dbId = row.id; });
 
   const picker = document.getElementById('contactPicker');
   if (picker) picker.remove();
@@ -2953,6 +3014,8 @@ function createNewContactForLead(leadId) {
 
 function removePanelContact(leadId, idx) {
   if (!contactsDB[leadId]) return;
+  const _removed = contactsDB[leadId][idx];
+  if (_removed && _removed._dbId) dbDeleteLeadContact(_removed._dbId);
   contactsDB[leadId].splice(idx, 1);
   if (contactsDB[leadId].length === 0) delete contactsDB[leadId];
   openPanel(leadId);
@@ -2964,9 +3027,12 @@ function removePanelContact(leadId, idx) {
 function savePanelContact(leadId, idx, field, value) {
   if (!contactsDB[leadId] || !contactsDB[leadId][idx]) return;
   contactsDB[leadId][idx][field] = value.trim();
+  const _lc = contactsDB[leadId][idx];
+  if (_lc._dbId) dbUpdateLeadContact(_lc._dbId, { [field]: value.trim() });
 }
 
 function savePanelField(leadId, field, value) {
+  dbUpdateLead(leadId, { [field]: value.trim() });
   const l = allLeads[leadId];
   if (!l) return;
   if (field === 'value') {
@@ -2982,11 +3048,18 @@ function savePanelField(leadId, field, value) {
 }
 
 function savePanelLane(leadId, newLaneName) {
+  // DB: update swimlane lead_ids after lane change
+  setTimeout(() => {
+    swimlanes.forEach(lane => {
+      if (lane._dbId) dbUpdateSwimlane(lane._dbId, { lead_ids: lane.ids });
+    });
+  }, 100);
   changeLeadLane(leadId, newLaneName);
   openPanel(leadId);
 }
 
 function savePanelProduct(leadId, selectEl) {
+  // DB save handled in body below after product is set
   const v = selectEl.value;
   if (v === '__add__') {
     const val = prompt('Enter new Product:');
@@ -3139,8 +3212,10 @@ function closePanel() {
 
 let saveTimeout;
 function saveNotes(id) {
+  // Save notes to Supabase (debounced by existing UI saved indicator)
   const val = document.getElementById('notesArea').value;
   notesStore[id] = val;
+  dbUpdateLead(id, { notes: val });
   clearTimeout(saveTimeout);
   const el = document.getElementById('notesSaved');
   el.classList.add('show');
@@ -3158,47 +3233,8 @@ document.addEventListener('keydown', (e) => {
 let contactTypeOptions = ['Customer', 'Prospect', 'Partner'];
 let contactStatusOptions = ['Active', 'Inactive'];
 
-const allContacts = [
-  {id:1,name:"Tom Harris",first:"Tom",last:"Harris",company:"Ruby Pro Software",email:"",phone:"",job:"President",location:"",website:"",team:true},
-  {id:2,name:"Quincy Selbach",first:"Quincy",last:"Selbach",company:"",email:"Qselbach@sbcglobal.net",phone:"(707) 479-2002",job:"",location:"",website:""},
-  {id:3,name:"Lou Zwirlein",first:"Lou",last:"Zwirlein",company:"Forager Imports",email:"Lou@foragerimports.com",phone:"(443) 386-2998",job:"",location:"",website:""},
-  {id:4,name:"Ian Griffith",first:"Ian",last:"Griffith",company:"",email:"ian@griffith.com",phone:"",job:"",location:"",website:""},
-  {id:5,name:"John Aron",first:"John",last:"Aron",company:"Paste Shoppe",email:"john@pastashoppe.com",phone:"",job:"President",location:"",website:""},
-  {id:6,name:"Todd Schneider",first:"Todd",last:"Schneider",company:"Forager Imports",email:"Todd@ForagerImports.com",phone:"",job:"",location:"",website:""},
-  {id:7,name:"Brian Soudant",first:"Brian",last:"Soudant",company:"Soudant Consulting",email:"Brian@soudantconsultinggroup.com",phone:"",job:"President",location:"",website:""},
-  {id:8,name:"Harry Pratt",first:"Harry",last:"Pratt",company:"Four Feathers",email:"harryp@fourfeathers.com",phone:"",job:"Operations",location:"",website:""},
-  {id:9,name:"James Stover",first:"James",last:"Stover",company:"Wine Sales",email:"Stoverwine@gmail.com",phone:"(630) 373-2675",job:"",location:"",website:""},
-  {id:10,name:"Ryan Hallerman",first:"Ryan",last:"Hallerman",company:"Apex Group 360",email:"Ryan@apexgroup360.com",phone:"",job:"Partner",location:"",website:""},
-  {id:11,name:"Dominic Doty",first:"Dominic",last:"Doty",company:"Formerly - Wine Warehouse",email:"domdoty@yahoo.com",phone:"(213) 379-2997",job:"Sales",location:"",website:""},
-  {id:12,name:"Steve Melchiskey",first:"Steve",last:"Melchiskey",company:"Retired",email:"stevemelchiskey@gmail.com",phone:"",job:"",location:"",website:""},
-  {id:13,name:"Sam Anderson",first:"Sam",last:"Anderson",company:"Bev Assets",email:"sam@bevassets.com",phone:"",job:"Partner",location:"",website:""},
-  {id:14,name:"Reed Kelly",first:"Reed",last:"Kelly",company:"Viking Mergers",email:"reed@vikingmergers.com",phone:"(651) 804-6967",job:"Senior Advisor",location:"Nashville, TN",website:""},
-  {id:15,name:"Eric Evans",first:"Eric",last:"Evans",company:"Coalition Brands",email:"eric@coalition-brands.com",phone:"",job:"Partner",location:"",website:""},
-  {id:16,name:"Ed Edwards",first:"Ed",last:"Edwards",company:"Meritage W&S",email:"ebe.meritage@comcast.net",phone:"",job:"",location:"",website:""},
-  {id:17,name:"Arjun Dewan",first:"Arjun",last:"Dewan",company:"",email:"arjundewan1022@gmail.com",phone:"",job:"",location:"",website:""},
-  {id:18,name:"J. Giarrante",first:"J.",last:"Giarrante",company:"Show Me Beverage",email:"jgiarrante@mjbevolution.com",phone:"",job:"",location:"",website:""},
-  {id:19,name:"Jim Harris",first:"Jim",last:"Harris",company:"Ruby Pro Software",email:"",phone:"",job:"",location:"",website:"",team:true},
-  {id:20,name:"Keith Oriente",first:"Keith",last:"Oriente",company:"Valenzano Winery",email:"koriente@comcast.net",phone:"(609) 743-8516",job:"Operations",location:"",website:""},
-  {id:21,name:"Scott Kubik",first:"Scott",last:"Kubik",company:"Kubik Market Analytics",email:"scott@kubikmarketanalytics.com",phone:"",job:"Principal",location:"",website:""},
-  {id:22,name:"Jordan Poynter",first:"Jordan",last:"Poynter",company:"Atlas Beverage Group",email:"Jordanpoynter3@gmail.com",phone:"",job:"Consultant",location:"",website:""},
-  {id:23,name:"Dave Forman",first:"Dave",last:"Forman",company:"",email:"dee4man@comcast.net",phone:"(404) 314-6399",job:"VP",location:"",website:""},
-  {id:24,name:"Michael Hinckley",first:"Michael",last:"Hinckley",company:"",email:"mhinckley1@gmail.com",phone:"(513) 477-6463",job:"",location:"",website:""},
-  {id:25,name:"Ethan Hirsh",first:"Ethan",last:"Hirsh",company:"BarrelSense Inc.",email:"Hirsh@BarrelSense.com",phone:"(561) 866-8987",job:"Founder & CEO",location:"",website:""},
-  {id:26,name:"Michael Klauer",first:"Michael",last:"Klauer",company:"MMK Logistics",email:"mk@mbevteam.com",phone:"(773) 255-7864",job:"President",location:"",website:""},
-  {id:27,name:"Tom Barthell",first:"Tom",last:"Barthell",company:"Barthell Digital",email:"tom@Barthelldigital.com",phone:"(262) 880-1857",job:"Founder",location:"",website:""},
-  {id:28,name:"Daeyna Grant",first:"Daeyna",last:"Grant",company:"Gold Crush Cocktails",email:"hello@goldcrushcocktails.com",phone:"",job:"CEO & Founder",location:"",website:""},
-  {id:29,name:"Alberto Berardi",first:"Alberto",last:"Berardi",company:"Fraternity Spirits",email:"a.berardi@fraternityspirits.com",phone:"",job:"",location:"",website:""},
-  {id:30,name:"Raffaele Berardi",first:"Raffaele",last:"Berardi",company:"Fraternity Spirits",email:"r.berardi@fraternityspirits.com",phone:"",job:"",location:"",website:""},
-  {id:31,name:"Dale LaFlam",first:"Dale",last:"LaFlam",company:"5:30 Somewhere",email:"dale@530somewhere.com",phone:"(562) 533-5077",job:"President",location:"",website:""},
-  {id:32,name:"Jack Harris",first:"Jack",last:"Harris",company:"Ruby Pro Software",email:"",phone:"(615) 353-1976",job:"Director of Marketing",location:"",website:"",team:true},
-  {id:33,name:"Kirk Parsons",first:"Kirk",last:"Parsons",company:"Parson Fine Imports",email:"kirk.parsons@parsonsfineimports.com",phone:"",job:"President",location:"",website:""},
-  {id:34,name:"Will Parsons",first:"Will",last:"Parsons",company:"Parson Fine Imports",email:"will.parsons@parsonsfineimports.com",phone:"",job:"Sales",location:"",website:""}
-];
-// Initialize type + status defaults
-allContacts.forEach(c => {
-  if (!c.contactType) c.contactType = c.team ? 'Partner' : 'Prospect';
-  if (!c.status) c.status = 'Active';
-});
+const allContacts = [];
+// Type + status defaults now loaded from Supabase
 
 // --- Link contacts to leads ---
 function findLinkedLeads(contact) {
@@ -3354,14 +3390,14 @@ function addContactTypeOption() {
   const val = prompt('Enter new Contact Type:');
   if (!val || !val.trim()) return;
   const trimmed = val.trim();
-  if (!contactTypeOptions.includes(trimmed)) contactTypeOptions.push(trimmed);
+  if (!contactTypeOptions.includes(trimmed)) { contactTypeOptions.push(trimmed); dbInsertOption('contact_type', trimmed); }
   return trimmed;
 }
 function addContactStatusOption() {
   const val = prompt('Enter new Status:');
   if (!val || !val.trim()) return;
   const trimmed = val.trim();
-  if (!contactStatusOptions.includes(trimmed)) contactStatusOptions.push(trimmed);
+  if (!contactStatusOptions.includes(trimmed)) { contactStatusOptions.push(trimmed); dbInsertOption('contact_status', trimmed); }
   return trimmed;
 }
 function changeContactType(contactId, selectEl) {
@@ -3378,7 +3414,7 @@ function changeContactType(contactId, selectEl) {
     return;
   }
   const c = allContacts.find(x => x.id === contactId);
-  if (c) c.contactType = v;
+  if (c) { c.contactType = v; dbUpdateContact(contactId, { contact_type: v }); }
   renderContacts();
 }
 function changeContactStatus(contactId, selectEl) {
@@ -3395,7 +3431,7 @@ function changeContactStatus(contactId, selectEl) {
     return;
   }
   const c = allContacts.find(x => x.id === contactId);
-  if (c) c.status = v;
+  if (c) { c.status = v; dbUpdateContact(contactId, { status: v }); }
   renderContacts();
 }
 
@@ -3456,6 +3492,8 @@ function addNewContact() {
     contactType: 'Prospect', status: 'Active'
   };
   allContacts.unshift(newContact);
+  // Insert into Supabase and get real ID
+  dbInsertContact({ name: 'New Contact', first_name: 'New', last_name: 'Contact', company: '', email: '', phone: '', job: '', location: '', website: '', contact_type: 'Prospect', status: 'Active', is_team: false }).then(row => { if (row) newContact.id = row.id; });
   renderContacts();
   // Open the panel so user can fill in details immediately
   setTimeout(() => openContactPanel(newId), 150);
@@ -3554,6 +3592,7 @@ function renderGridView(filtered) {
 
 // --- Contact detail panel ---
 function saveContactField(contactId, field, value) {
+  dbUpdateContact(contactId, { [field]: value.trim() });
   const c = allContacts.find(x => x.id === contactId);
   if (!c) return;
 
@@ -3586,6 +3625,11 @@ function saveContactField(contactId, field, value) {
 }
 
 function saveContactName(contactId, field, value) {
+  // Save name fields to DB
+  const c = allContacts.find(x => x.id === contactId);
+  if (c) {
+    setTimeout(() => dbUpdateContact(contactId, { name: c.name, first_name: c.first, last_name: c.last }), 50);
+  }
   const c = allContacts.find(x => x.id === contactId);
   if (!c) return;
   const oldName = c.name;
@@ -3730,55 +3774,7 @@ function openContactPanel(contactId) {
 // =============================================
 // PARTNERS / BEV ASSETS TRACKING
 // =============================================
-const partnersData = [
-  {id:1,product:"ERP",stage:"Introduction",name:"Freebrook Imports - CA",contact:"Katie and Adam",email:"",notes:"See what there are implementing",price:"",type:"Supplier/Distributor",markets:"",date:"12/30/2025"},
-  {id:2,product:"ERP",stage:"Contract in Process",name:"Paradise - FL",contact:"Chris Truppi, Rosa Williams",email:"",notes:"Tampa Based pass thru",price:"",type:"Distributor",markets:"",date:"11/21/2025"},
-  {id:3,product:"ERP",stage:"Signed Customer",name:"Falcon Distributing",contact:"Ryan Kohl",email:"",notes:"GA,AR VA. IL, PA",price:"",type:"",markets:"",date:""},
-  {id:4,product:"ERP",stage:"Introduction",name:"Western Beverage CA",contact:"Rod Taylor",email:"",notes:"CA",price:"",type:"",markets:"",date:""},
-  {id:5,product:"ERP",stage:"Contract in Process",name:"Frankies",contact:"Ryan Shea",email:"",notes:"WSWA",price:"",type:"Supplier",markets:"5",date:"12/1/2025"},
-  {id:6,product:"ERP",stage:"Introduction",name:"NAB Selections",contact:"Steve Federico",email:"",notes:"CT, NY, NJ",price:"",type:"Distributor",markets:"",date:""},
-  {id:7,product:"Price Management",stage:"Signed Customer",name:"Montanya Rum",contact:"Megan, Renee, Sean",email:"",notes:"",price:"$25/market",type:"Supplier",markets:"2",date:"1/5/2026"},
-  {id:8,product:"Price Management",stage:"Signed Customer",name:"Thornbush Whiskey",contact:"Amy, Alex",email:"",notes:"",price:"$25/market",type:"Supplier",markets:"1",date:"1/5/2026"},
-  {id:9,product:"Price Management",stage:"Signed Customer",name:"O'Shaughnessy",contact:"Brian Nation",email:"",notes:"Match start, adding Audit in MN (Netsuite)",price:"$20/market (20% Discount)",type:"Supplier",markets:"31",date:"12/9/2025"},
-  {id:10,product:"Price Management",stage:"Demo",name:"Gold Crush Cocktails",contact:"Daeyna",email:"",notes:"NY to start",price:"$25/market",type:"Supplier",markets:"1",date:"1/8/2026"},
-  {id:11,product:"Price Management",stage:"Demo",name:"Film Line Spirits",contact:"",email:"",notes:"",price:"$25/market",type:"Supplier",markets:"19",date:"1/8/2026"},
-  {id:12,product:"Price Management",stage:"Frontline",name:"Lure Drinks (THC)",contact:"Gary, Matt, Jeff",email:"",notes:"WSWA",price:"",type:"",markets:"6",date:"1/9/2025"},
-  {id:13,product:"Price Management",stage:"Demo",name:"Sabor Del Sol",contact:"",email:"",notes:"",price:"$25/market",type:"Supplier",markets:"2",date:"1/5/2026"},
-  {id:14,product:"Price Management",stage:"Introduction",name:"Sen Pena Mezcal",contact:"",email:"",notes:"",price:"$25/market",type:"Supplier",markets:"1",date:"12/15/2025"},
-  {id:15,product:"Price Management",stage:"Introduction",name:"Tina Organic",contact:"",email:"",notes:"",price:"",type:"Supplier",markets:"2",date:"12/1/2025"},
-  {id:16,product:"Price Management",stage:"Contract in Process",name:"Frankies",contact:"Ryan Shea",email:"",notes:"WSWA",price:"",type:"Supplier",markets:"5",date:"12/1/2025"},
-  {id:17,product:"Price Management",stage:"Trial",name:"High Octane Lemonade",contact:"",email:"",notes:"",price:"",type:"Supplier",markets:"",date:"11/1/2025"},
-  {id:18,product:"Price Management",stage:"Trial",name:"Jaquar Voladar US",contact:"",email:"",notes:"",price:"",type:"Supplier",markets:"",date:"11/1/2025"},
-  {id:19,product:"Price Management",stage:"Trial",name:"Santa Almagia Mezcal",contact:"",email:"",notes:"",price:"",type:"Supplier",markets:"",date:"11/1/2025"},
-  {id:20,product:"Price Management",stage:"Trial",name:"Lyer & Thief",contact:"",email:"",notes:"",price:"",type:"Supplier",markets:"6",date:"10/1/2025"},
-  {id:21,product:"Price Management",stage:"Trial",name:"Top Shelf Industries",contact:"",email:"",notes:"",price:"",type:"Supplier",markets:"4",date:"10/1/2025"},
-  {id:22,product:"Price Management",stage:"Trial",name:"750 Selections",contact:"",email:"",notes:"",price:"",type:"Supplier",markets:"",date:"10/1/2025"},
-  {id:23,product:"Price Management",stage:"Trial",name:"Top Shelf Industries Operating, LTD",contact:"",email:"",notes:"",price:"",type:"Supplier",markets:"",date:"10/1/2025"},
-  {id:24,product:"Price Management",stage:"Check In Required",name:"Art & Rev",contact:"Anne",email:"",notes:"Nan & Jody",price:"$20/market",type:"Supplier",markets:"",date:"9/1/2025"},
-  {id:25,product:"Price Management",stage:"Check In Required",name:"22 Salutes",contact:"",email:"",notes:"",price:"$20/market",type:"Supplier",markets:"",date:"9/1/2025"},
-  {id:26,product:"Price Management",stage:"Trial",name:"Deecan Spirits",contact:"Eric & Maurice",email:"",notes:"India Import - Paused Jan 2026",price:"$20/market",type:"Supplier",markets:"",date:"9/1/2025"},
-  {id:27,product:"Price Management",stage:"Trial",name:"Bev Nomads",contact:"Tom",email:"",notes:"",price:"",type:"Supplier",markets:"",date:"9/1/2025"},
-  {id:28,product:"Price Management",stage:"Trial",name:"Meritage",contact:"Ed",email:"",notes:"6 Brokers",price:"$20/market",type:"Supplier/Broker",markets:"",date:"9/1/2025"},
-  {id:29,product:"Price Management",stage:"Introduction",name:"Latin Shots",contact:"Tucker",email:"",notes:"",price:"",type:"Supplier",markets:"",date:"9/1/2025"},
-  {id:30,product:"Price Management",stage:"Introduction",name:"Altamar Brands",contact:"Lyons",email:"",notes:"",price:"",type:"Supplier",markets:"",date:"9/1/2025"},
-  {id:31,product:"Price Management",stage:"Introduction",name:"Lur Beverages",contact:"",email:"",notes:"",price:"",type:"Supplier",markets:"",date:"9/1/2025"},
-  {id:32,product:"Price Management",stage:"Introduction",name:"Montifinia Tequilia",contact:"",email:"",notes:"",price:"",type:"Supplier",markets:"",date:"9/1/2025"},
-  {id:33,product:"Price Management",stage:"Introduction",name:"Dragon Distillers",contact:"",email:"",notes:"",price:"",type:"Supplier",markets:"",date:"9/1/2025"},
-  {id:34,product:"Price Management",stage:"Trial",name:"Fix Vodka",contact:"",email:"",notes:"",price:"",type:"Supplier",markets:"",date:"8/1/2025"},
-  {id:35,product:"Price Management",stage:"Trial",name:"Poor Richards",contact:"",email:"",notes:"",price:"",type:"Supplier",markets:"",date:"8/1/2025"},
-  {id:36,product:"Price Management",stage:"Trial",name:"Casa Cobra",contact:"",email:"",notes:"",price:"",type:"Supplier",markets:"",date:"7/31/2025"},
-  {id:37,product:"Frontline",stage:"Frontline",name:"Reeds",contact:"",email:"",notes:"Frontline",price:"",type:"Supplier",markets:"25",date:"1/9/2026"},
-  {id:38,product:"Frontline",stage:"Frontline",name:"Bimble",contact:"",email:"",notes:"Frontline",price:"",type:"Supplier",markets:"",date:"1/10/2026"},
-  {id:39,product:"Frontline",stage:"Frontline",name:"Missing Thorn",contact:"",email:"",notes:"Frontline",price:"",type:"Supplier",markets:"",date:"1/11/2026"},
-  {id:40,product:"Frontline",stage:"Frontline",name:"Soda Jerk",contact:"",email:"",notes:"Frontline",price:"",type:"Supplier",markets:"",date:"1/12/2026"},
-  {id:41,product:"Frontline",stage:"Frontline",name:"Tater Distilling",contact:"",email:"",notes:"",price:"",type:"Supplier",markets:"",date:"1/13/2026"},
-  {id:42,product:"Frontline",stage:"Frontline",name:"Griffo",contact:"Will",email:"",notes:"",price:"",type:"Supplier",markets:"",date:"1/14/2026"},
-  {id:43,product:"Frontline",stage:"Frontline",name:"Top Dog",contact:"Chris Paperllo",email:"",notes:"FL - 2 markets",price:"",type:"",markets:"",date:""},
-  {id:44,product:"Frontline",stage:"Frontline",name:"Unbridled",contact:"India",email:"",notes:"",price:"",type:"",markets:"",date:""},
-  {id:45,product:"ERP",stage:"Not Interested",name:"Manuel Brothers - AZ",contact:"Luke",email:"",notes:"Not a good fit for Ruby right now",price:"",type:"3PL Distributor",markets:"",date:"10/1/2025"},
-  {id:46,product:"ERP",stage:"Not Interested",name:"SHOWME Beverages - MO",contact:"John Giarrante",email:"john@bevnomad.com",notes:"Encompass",price:"$20/market",type:"Supplier/Distributor",markets:"",date:"11/1/2025"},
-  {id:47,product:"",stage:"",name:"MMK",contact:"Michael Klauer",email:"",notes:"",price:"",type:"",markets:"",date:""}
-];
+const partnersData = [];
 
 let partnerFilter = 'all';
 let partnerSortCol = 'name';
@@ -3838,6 +3834,7 @@ function changePartnerField(pid, field, value) {
   const p = partnersData.find(x => x.id === pid);
   if (!p) return;
   p[field] = value;
+  dbUpdatePartner(pid, { [field]: value });
   // For text fields (name, contact, price, markets, date, notes) don't re-render while typing
   if (['name','contact','price','markets','date','notes','email'].includes(field)) return;
   renderPartners();
@@ -3852,7 +3849,7 @@ function changeBvDropdown(pid, field, selectEl) {
     const val = prompt('Enter new ' + labels[field] + ':');
     if (val && val.trim()) {
       const arr = arrays[field];
-      if (!arr.includes(val.trim())) arr.push(val.trim());
+      if (!arr.includes(val.trim())) { arr.push(val.trim()); dbInsertOption('bv_' + field, val.trim()); }
       const p = partnersData.find(x => x.id === pid);
       if (p) p[field] = val.trim();
     }
@@ -3860,7 +3857,7 @@ function changeBvDropdown(pid, field, selectEl) {
     return;
   }
   const p = partnersData.find(x => x.id === pid);
-  if (p) p[field] = v;
+  if (p) { p[field] = v; dbUpdatePartner(pid, { [field]: v }); }
   renderPartners();
 }
 
@@ -4449,7 +4446,7 @@ function initContactFilters() {
   }
 }
 initContactFilters();
-renderBoard();
+loadAllData();
 </script>
 </body>
 </html>
